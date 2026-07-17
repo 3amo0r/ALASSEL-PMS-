@@ -1,4 +1,4 @@
-// src/preload.js - النسخة المتكاملة للويب ديمو
+// src/preload.js - النسخة الشاملة لنسخة الويب ديمو
 console.log('✅ Preload.js (Web Mock) loaded successfully!');
 
 window.api = {
@@ -23,21 +23,35 @@ window.api = {
         return Promise.resolve(JSON.parse(data));
       }
       
-      // إذا كانت أول مرة والذاكرة فارغة، نرجع الهيكل المتوقع الافتراضي
-      const defaultStructure = {
-        settings: {
-          theme: 'dark',
-          language: 'ar'
-        },
-        auth: {
-          isLoggedIn: false
-        }
-      };
-      
-      return Promise.resolve(defaultStructure);
+      // الهيكل الافتراضي لأول مرة
+      return Promise.resolve({
+        settings: { theme: 'dark', language: 'ar' },
+        auth: { isLoggedIn: false }
+      });
     } catch (error) {
       console.error('[Web Mock] Error loading data:', error);
       return Promise.resolve({ settings: { theme: 'dark' } });
+    }
+  },
+
+  // الدالة المطلوبة لإعداد الحساب أول مرة (تثبيت الـ Admin)
+  authSetup: (username, password) => {
+    console.log(`[Web Mock] authSetup called for username: ${username}`);
+    try {
+      // محاكاة لإنشاء ملف إعدادات وحساب أدمن
+      const mockData = {
+        settings: { theme: 'dark', language: 'ar' },
+        auth: { 
+          isLoggedIn: true, 
+          currentUser: username 
+        },
+        users: [{ username: username, role: 'admin' }]
+      };
+      // حفظ البيانات في المتصفح تلقائياً
+      localStorage.setItem('alaseel_pms_data', JSON.stringify(mockData));
+      return Promise.resolve({ success: true, data: mockData });
+    } catch (error) {
+      return Promise.resolve({ success: false, error: error.message });
     }
   },
 
