@@ -1,0 +1,202 @@
+/* ==========================================================================
+   extended.css — components added after Phase 1's main.css:
+   guests, reservations/booking, room sentiment, and the inventory/voucher
+   module. Reuses main.css's CSS custom properties (theme tokens).
+   ========================================================================== */
+
+/* ---- missing Phase 1 modifier, needed by both room sentiment and
+   blacklist/room-conflict warnings ---- */
+.notice-banner.danger { background: var(--maint-soft); color: var(--danger-text); }
+
+/* ---- composite module tabs (Guests | Reservations) ---- */
+.module-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.module-tab {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-dim);
+  font-size: 13px; font-weight: 700; padding: 9px 18px; border-radius: 9px;
+}
+.module-tab.active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+
+/* ---- generic list/table (guests, reservations, voucher log) ---- */
+.list-row {
+  display: grid; align-items: center; gap: 10px; padding: 11px 16px;
+  border-bottom: 1px solid var(--border-soft); font-size: 13px; cursor: pointer;
+}
+.list-row:hover { background: var(--surface-raised); }
+.list-row-head { cursor: default; font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.list-row-head:hover { background: transparent; }
+.list-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-body { max-height: 560px; overflow-y: auto; }
+
+.guest-row-cols { grid-template-columns: 2.2fr 1.2fr 1.1fr 1fr 1fr; }
+.res-row-cols { grid-template-columns: 1.8fr 0.8fr 1fr 1fr 1.1fr 1.1fr; }
+
+.guest-name-cell { display: flex; align-items: center; gap: 9px; }
+.avatar-initial {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #12161b;
+}
+.avatar-c0 { background: #c9a227; } .avatar-c1 { background: #5fa88c; }
+.avatar-c2 { background: #5485ab; } .avatar-c3 { background: #dd9d4f; }
+.avatar-c4 { background: #b48ad1; }
+
+/* ---- badges ---- */
+.badge { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.badge-vip-none { background: var(--surface-raised); color: var(--text-dim); border: 1px solid var(--border); }
+.badge-vip-silver { background: rgba(180,190,200,.22); color: #9aa6b0; }
+.badge-vip-gold { background: var(--accent-soft); color: var(--accent-ink); }
+.badge-vip-platinum { background: rgba(180,138,209,.22); color: #b48ad1; }
+.badge-blacklist { background: var(--maint-soft); color: var(--danger-text); }
+
+/* ---- form building blocks reused by guests / reservations / inventory ---- */
+.form-section-label {
+  font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: .04em; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid var(--border-soft);
+}
+.detail-form:first-of-type + .form-section-label,
+.settings-body > .form-section-label:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 13px; }
+.checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.mini-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 4px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px;
+}
+.mini-row:last-child { border-bottom: 0; }
+
+/* ---- reviews ---- */
+.review-item { padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
+.review-item:last-child { border-bottom: 0; }
+.review-item-score { color: var(--accent-ink); font-size: 13px; letter-spacing: 1px; }
+.review-item-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.review-item-comment { font-size: 12.5px; margin-top: 5px; line-height: 1.6; }
+
+.review-summary-stat { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; direction: ltr; unicode-bidi: isolate; }
+.review-summary-stars { color: var(--accent-ink); font-size: 15px; letter-spacing: 1px; }
+
+/* ---- booking layout (reservations detail) ---- */
+.booking-layout { display: grid; grid-template-columns: 1fr 300px; gap: 14px; align-items: start; }
+.booking-main { min-width: 0; }
+.booking-sidebar { position: sticky; top: 0; }
+
+.sidebar-panel { background: var(--surface); border: 1px solid var(--border-soft); border-radius: 10px; padding: 16px; }
+.sidebar-panel-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+
+.selected-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; margin-bottom: 8px;
+}
+.selected-card-badges { display: flex; gap: 6px; margin-top: 5px; }
+
+.guest-picker-box .field-input { margin-bottom: 8px; }
+.guest-picker-results { max-height: 220px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: 8px; }
+.guest-picker-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; cursor: pointer;
+}
+.guest-picker-row:last-child { border-bottom: 0; }
+.guest-picker-row:hover { background: var(--surface-raised); }
+
+/* ---- folio ---- */
+.folio-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid var(--border-soft); }
+.folio-total-row { border-bottom: 0; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; font-weight: 700; color: var(--accent-ink); }
+.add-charge-form { margin-top: 8px; }
+
+/* ---- checkout review star input ---- */
+.star-input { font-size: 26px; letter-spacing: 4px; margin: 6px 0 14px; direction: ltr; unicode-bidi: isolate; }
+.star-input span { color: var(--border); cursor: pointer; transition: color .1s ease; }
+.star-input span.star-on { color: var(--accent); }
+
+/* ---- room grid sentiment flag ---- */
+.room-tile { position: relative; }
+.tile-flag {
+  position: absolute; top: 5px; left: 5px; font-size: 11px; line-height: 1;
+  background: var(--maint); color: #fff; width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ==========================================================================
+   Inventory & Vouchers module
+   ========================================================================== */
+.stock-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.stock-table th {
+  text-align: right; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-dim); font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.stock-table td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); }
+.stock-table tr:last-child td { border-bottom: 0; }
+.stock-table input.threshold-input {
+  width: 64px; background: var(--surface-raised); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px 7px; font-size: 12px; direction: ltr; text-align: center;
+}
+.stock-qty-low { color: var(--danger-text); font-weight: 700; }
+
+.low-stock-banner {
+  display: flex; align-items: center; gap: 8px; background: var(--maint-soft); color: var(--danger-text);
+  border-radius: 8px; padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin: 12px 16px 0;
+}
+
+.transit-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 4px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px;
+}
+.transit-row:last-child { border-bottom: 0; }
+
+.voucher-log-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.voucher-log-row:last-child { border-bottom: 0; }
+.voucher-log-type {
+  flex-shrink: 0; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-ink); white-space: nowrap;
+}
+.voucher-log-body { flex: 1; }
+.voucher-log-meta { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+/* ==========================================================================
+   Coffee Shop / Laundry (Phase 3b)
+   ========================================================================== */
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 9px; padding: 14px 16px 18px; }
+.menu-category-block .table-grid { padding: 8px 0 4px; }
+
+.table-card {
+  border-radius: 9px; padding: 12px; text-align: right; border: 1px solid var(--border);
+  background: var(--surface-raised); color: var(--text); min-height: 74px; display: flex; flex-direction: column; justify-content: space-between;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.table-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.18); border-color: var(--accent); }
+.table-card.open { border-inline-start: 3px solid var(--occupied); }
+.table-card.settled { border-inline-start: 3px solid var(--oo); opacity: .75; }
+.table-card-name { font-size: 12.5px; font-weight: 700; }
+.table-card-status { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; }
+.table-card-total { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 600; margin-top: 6px; color: var(--accent-ink); }
+
+.menu-category-block { padding: 14px 16px; border-bottom: 1px solid var(--border-soft); }
+.menu-category-block:last-child { border-bottom: 0; }
+
+.settle-option-card {
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: 9px;
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.settle-option-card strong { font-size: 12.5px; display: block; margin-bottom: 8px; }
+.settle-option-card .field-input { margin-bottom: 8px; }
+
+.day-block {
+  border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.day-block strong { font-size: 12.5px; }
+.shift-chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface-raised); border-radius: 7px; padding: 7px 10px; margin-top: 6px; font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .booking-layout { grid-template-columns: 1fr; }
+  .booking-sidebar { position: static; }
+  .guest-row-cols, .res-row-cols { grid-template-columns: 2fr 1fr 1fr; }
+  .guest-row-cols .list-cell:nth-child(4), .guest-row-cols .list-cell:nth-child(5),
+  .res-row-cols .list-cell:nth-child(4) { display: none; }
+}
+@media (max-width: 680px) {
+  .guest-row-cols, .res-row-cols { grid-template-columns: 1fr; }
+  .list-row { grid-template-rows: auto; }
+}
