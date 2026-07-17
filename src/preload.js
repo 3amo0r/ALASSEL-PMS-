@@ -1,29 +1,30 @@
-// preload.js
-// Runs in an isolated context with access to Node, but the renderer (our
-// index.html/js) never gets Node access directly. Only the functions
-// explicitly exposed below are reachable from the page — a deliberately
-// narrow, auditable surface.
+// src/preload.js - النسخة المتوافقة مع المتصفح (Web Demo)
 
-const { contextBridge, ipcRenderer } = require('electron');
+// هذا الملف يقوم فقط بتجهيز واجهة الـ API الوهمية على الـ window
+// لضمان أن باقي أكواد المشروع (store.js, app.js) تعمل دون تعديل
 
-contextBridge.exposeInMainWorld('alaseelAPI', {
-  // data store
-  loadData: () => ipcRenderer.invoke('store:load'),
-  saveData: (data) => ipcRenderer.invoke('store:save', data),
+console.log('✅ Preload.js (Web Mock) loaded successfully!');
 
-  // auth
-  authSetup: (payload) => ipcRenderer.invoke('auth:setup', payload),
-  authLogin: (payload) => ipcRenderer.invoke('auth:login', payload),
-  authVerifyRecovery: (payload) => ipcRenderer.invoke('auth:verifyRecovery', payload),
-  authReset: (payload) => ipcRenderer.invoke('auth:reset', payload),
-  authChangePassword: (payload) => ipcRenderer.invoke('auth:changePassword', payload),
-  authCreateUser: (payload) => ipcRenderer.invoke('auth:createUser', payload),
-  authDeleteUser: (payload) => ipcRenderer.invoke('auth:deleteUser', payload),
+// تعريف واجهة API وهمية في المتصفح
+window.api = {
+  // دالة وهمية لحفظ البيانات (لا تفعل شيئاً في نسخة الويب حالياً)
+  saveData: (key, data) => {
+    console.log(`[Web Mock] saveData called for key: ${key}`);
+    return Promise.resolve(true);
+  },
 
-  // export
-  exportRoomsCsv: (payload) => ipcRenderer.invoke('export:roomsCsv', payload),
-  exportLedgerCsv: (payload) => ipcRenderer.invoke('export:ledgerCsv', payload),
-  revealInFolder: (payload) => ipcRenderer.invoke('export:revealInFolder', payload),
+  // دالة وهمية لتحميل البيانات (تعيد null لفرض إنشاء حساب جديد)
+  loadData: (key) => {
+    console.log(`[Web Mock] loadData called for key: ${key}`);
+    return Promise.resolve(null);
+  },
 
-  platform: process.platform
-});
+  // دالة وهمية للتحقق من وجود ملف (تعيد false دائماً)
+  fileExists: (path) => {
+    console.log(`[Web Mock] fileExists called for path: ${path}`);
+    return Promise.resolve(false);
+  }
+};
+
+// تعريف الاسم البديل أيضاً (للتوافق)
+window.alaseelAPI = window.api;
