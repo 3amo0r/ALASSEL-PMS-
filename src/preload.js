@@ -17,6 +17,7 @@ window.api = {
   },
 
   loadData: (key) => {
+    const safeKey = (!key || key === 'undefined') ? DEFAULT_KEY : key;
     console.log(`[Web Mock] Loading data for key: ${key}`);
     try {
       const data = localStorage.getItem(safeKey);
