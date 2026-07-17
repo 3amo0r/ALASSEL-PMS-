@@ -1,8 +1,8 @@
-// src/preload.js - النسخة النهائية والذكية للويب ديمو
+// src/preload.js - النسخة المتكاملة للويب ديمو
 console.log('✅ Preload.js (Web Mock) loaded successfully!');
 
 window.api = {
-  // حفظ البيانات في ذاكرة المتصفح المحلية (Local Storage)
+  // حفظ البيانات في ذاكرة المتصفح
   saveData: (key, data) => {
     console.log(`[Web Mock] Saving data for key: ${key}`, data);
     try {
@@ -14,7 +14,7 @@ window.api = {
     }
   },
 
-  // قراءة البيانات من ذاكرة المتصفح المحلية
+  // قراءة البيانات من ذاكرة المتصفح مع تجهيز الهيكل الأساسي
   loadData: (key) => {
     console.log(`[Web Mock] Loading data for key: ${key}`);
     try {
@@ -22,11 +22,22 @@ window.api = {
       if (data) {
         return Promise.resolve(JSON.parse(data));
       }
-      // إذا لم تكن هناك بيانات محفوظة، نرجع كائن فارغ بدلاً من null لتجنب الأخطاء
-      return Promise.resolve({});
+      
+      // إذا كانت أول مرة والذاكرة فارغة، نرجع الهيكل المتوقع الافتراضي
+      const defaultStructure = {
+        settings: {
+          theme: 'dark',
+          language: 'ar'
+        },
+        auth: {
+          isLoggedIn: false
+        }
+      };
+      
+      return Promise.resolve(defaultStructure);
     } catch (error) {
       console.error('[Web Mock] Error loading data:', error);
-      return Promise.resolve({});
+      return Promise.resolve({ settings: { theme: 'dark' } });
     }
   },
 
