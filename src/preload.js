@@ -1,8 +1,7 @@
-// src/preload.js - النسخة الشاملة لنسخة الويب ديمو
+// src/preload.js - النسخة النهائية لإصلاح استقبال الكائن
 console.log('✅ Preload.js (Web Mock) loaded successfully!');
 
 window.api = {
-  // حفظ البيانات في ذاكرة المتصفح
   saveData: (key, data) => {
     console.log(`[Web Mock] Saving data for key: ${key}`, data);
     try {
@@ -14,7 +13,6 @@ window.api = {
     }
   },
 
-  // قراءة البيانات من ذاكرة المتصفح مع تجهيز الهيكل الأساسي
   loadData: (key) => {
     console.log(`[Web Mock] Loading data for key: ${key}`);
     try {
@@ -22,8 +20,6 @@ window.api = {
       if (data) {
         return Promise.resolve(JSON.parse(data));
       }
-      
-      // الهيكل الافتراضي لأول مرة
       return Promise.resolve({
         settings: { theme: 'dark', language: 'ar' },
         auth: { isLoggedIn: false }
@@ -34,28 +30,32 @@ window.api = {
     }
   },
 
-  // الدالة المطلوبة لإعداد الحساب أول مرة (تثبيت الـ Admin)
-  authSetup: (username, password) => {
-    console.log(`[Web Mock] authSetup called for username: ${username}`);
+  // تعديل الدالة لتقبل كائن (Object) تفكيكاً لهيكل المشروع
+  authSetup: (authData) => {
+    // استخراج اسم المستخدم سواء مبعوث ككائن أو كنص مباشر
+    const username = authData && typeof authData === 'object' ? authData.username : authData;
+    console.log(`[Web Mock] authSetup successfully called for: ${username}`);
+    
     try {
-      // محاكاة لإنشاء ملف إعدادات وحساب أدمن
       const mockData = {
         settings: { theme: 'dark', language: 'ar' },
         auth: { 
           isLoggedIn: true, 
-          currentUser: username 
+          currentUser: username || 'admin'
         },
-        users: [{ username: username, role: 'admin' }]
+        users: [{ username: username || 'admin', role: 'admin' }]
       };
-      // حفظ البيانات في المتصفح تلقائياً
+      
+      // حفظ البيانات في المتصفح
       localStorage.setItem('alaseel_pms_data', JSON.stringify(mockData));
+      
+      // الرد بنجاح العملية
       return Promise.resolve({ success: true, data: mockData });
     } catch (error) {
       return Promise.resolve({ success: false, error: error.message });
     }
   },
 
-  // التحقق من وجود ملف
   fileExists: (path) => {
     console.log(`[Web Mock] fileExists called for path: ${path}`);
     return Promise.resolve(false);
