@@ -153,18 +153,34 @@ const SKIP_DIRS = [
 
 // بحث عميق بالمحتوى لا بالاسم: الإصدارات الأحدث قد تسمّي الملف باسم مختلف تماماً،
 // فنقرأ كل ملف JSON معقول الحجم ونقيس عدد مفاتيح البصمة الموجودة فيه.
+// مجلدات يُرجَّح وجود البيانات فيها — تُمسح أولاً حتى لا يستهلك سقف الملفات
+// في مجلدات النظام الضخمة قبل الوصول إليها.
+const PRIORITY_DIRS = ['desktop', 'documents', 'downloads', 'onedrive', 'المستندات', 'سطح المكتب'];
+
 function deepScan(opts) {
   opts = opts || {};
   const roots = opts.roots && opts.roots.length ? opts.roots : dataRoots();
   const maxDepth = opts.maxDepth || 4;
-  const maxFiles = opts.maxFiles || 40000;
+  const maxFiles = opts.maxFiles || 60000;
+  const skip = (opts.skip || []).map((p) => p.toLowerCase());
   const hits = [];
+  const visited = {};
   let seen = 0;
 
   function walk(dir, depth) {
     if (depth > maxDepth || seen > maxFiles) return;
+    const lower = dir.toLowerCase();
+    if (skip.indexOf(lower) !== -1 || visited[lower]) return;
+    visited[lower] = true;
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    if (depth === 0) {
+      entries = entries.slice().sort((a, b) => {
+        const pa = PRIORITY_DIRS.indexOf(a.name.toLowerCase()) === -1 ? 1 : 0;
+        const pb = PRIORITY_DIRS.indexOf(b.name.toLowerCase()) === -1 ? 1 : 0;
+        return pa - pb;
+      });
+    }
     entries.forEach((ent) => {
       if (seen > maxFiles) return;
       const full = path.join(dir, ent.name);
@@ -580,7 +596,7 @@ function cmdFind(opts) {
   const scanRoots = opts.wide ? roots.concat([os.homedir()]) : roots;
   log('');
   log('── ملفات JSON تحمل بصمة بيانات النظام ──');
-  const hits = deepScan({ roots: scanRoots, maxDepth: opts.wide ? 5 : 4 });
+  const hits = deepScan({ roots: scanRoots, maxDepth: opts.wide ? 5 : 4, skip: opts.wide ? roots : [] });
   if (!hits.length) {
     log('  لا شيء.');
     log('');
