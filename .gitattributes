@@ -1,3 +1,3 @@
-# ملفات ويندوز يجب أن تبقى بنهايات أسطر CRLF
-*.cmd text eol=crlf
-*.bat text eol=crlf
+# ملفات ويندوز تُخزَّن ببايتاتها كما هي (CRLF) حتى لا يكسرها التنزيل المباشر من GitHub
+*.cmd -text
+*.bat -text
