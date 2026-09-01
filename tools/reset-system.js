@@ -84,7 +84,7 @@ const SUSPECT_PATTERN = /(expense|analytic|pricing|price|rate|ledger|audit|accou
 /* ------------------------------------------------------------------ */
 
 function parseArgs(argv) {
-  const out = { command: 'report', file: null, dryRun: false, yes: false, also: [], keepHistory: false, force: false };
+  const out = { command: 'report', file: null, dryRun: false, yes: false, also: [], keepHistory: false, force: false, root: null, wide: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -93,6 +93,8 @@ function parseArgs(argv) {
     else if (a === '--yes' || a === '-y') { out.yes = true; }
     else if (a === '--keep-history') { out.keepHistory = true; }
     else if (a === '--force') { out.force = true; }
+    else if (a === '--root') { out.root = argv[++i]; }
+    else if (a === '--wide') { out.wide = true; }
     else if (a === '--also') { out.also = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--help' || a === '-h') { out.command = 'help'; }
     else if (a.startsWith('-')) { rest.push(a); }
@@ -103,29 +105,140 @@ function parseArgs(argv) {
   return out;
 }
 
-function appDataRoot() {
-  if (process.platform === 'win32') return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support');
-  return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+function dataRoots() {
+  if (process.platform === 'win32') {
+    return [
+      process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+      process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
+    ];
+  }
+  if (process.platform === 'darwin') return [path.join(os.homedir(), 'Library', 'Application Support')];
+  return [process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config')];
 }
 
-// يبحث عن alaseel-data.json داخل مجلدات AppData (مستوى واحد للأسفل)، لأن اسم
-// مجلد التطبيق يختلف حسب طريقة البناء (alaseel-pms أو Alaseel PMS ...).
-function findDataFiles() {
-  const root = appDataRoot();
+function appDataRoot() { return dataRoots()[0]; }
+
+// بحث سريع: <AppData>/<مجلد التطبيق>/alaseel-data.json — يغطي التسميات المعتادة
+// (alaseel-pms أو Alaseel PMS ...) بدون مسح القرص.
+function shallowScan() {
   const hits = [];
-  let entries = [];
-  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return hits; }
-  entries.forEach((ent) => {
-    if (!ent.isDirectory()) return;
-    const candidate = path.join(root, ent.name, DATA_FILE_NAME);
-    try {
-      const st = fs.statSync(candidate);
-      if (st.isFile()) hits.push({ file: candidate, size: st.size, mtime: st.mtime });
-    } catch (e) { /* لا يوجد ملف هنا */ }
+  dataRoots().forEach((root) => {
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return; }
+    entries.forEach((ent) => {
+      if (!ent.isDirectory()) return;
+      const candidate = path.join(root, ent.name, DATA_FILE_NAME);
+      try {
+        const st = fs.statSync(candidate);
+        if (st.isFile()) hits.push({ file: candidate, size: st.size, mtime: st.mtime, score: 99, keys: [] });
+      } catch (e) { /* لا يوجد ملف هنا */ }
+    });
   });
-  hits.sort((a, b) => b.mtime - a.mtime);
   return hits;
+}
+
+// بصمة ملف بيانات النظام: مفاتيح لا تجتمع صدفةً في أي ملف JSON آخر.
+const SIGNATURE_KEYS = [
+  'rooms', 'reservations', 'guests', 'ledgerEntries', 'nightAuditRuns', 'coffeeShop',
+  'laundry', 'maintenanceTickets', 'employees', 'payrollRecords', 'companies',
+  'operationalDate', 'folioAudit', 'locationStock', 'inventoryThresholds', 'shifts',
+  'wasteLedger', 'vouchers', 'reviews', 'hotel'
+];
+
+const SKIP_DIRS = [
+  'node_modules', 'cache', 'code cache', 'gpucache', 'dawncache', 'crashpad', 'blob_storage',
+  'service worker', 'indexeddb', 'local storage', 'session storage', 'partitions', 'shadercache',
+  'temp', 'tmp', 'logs', '.git', 'packages', 'microsoft', 'windows', 'nvidia', 'installer'
+];
+
+// بحث عميق بالمحتوى لا بالاسم: الإصدارات الأحدث قد تسمّي الملف باسم مختلف تماماً،
+// فنقرأ كل ملف JSON معقول الحجم ونقيس عدد مفاتيح البصمة الموجودة فيه.
+function deepScan(opts) {
+  opts = opts || {};
+  const roots = opts.roots && opts.roots.length ? opts.roots : dataRoots();
+  const maxDepth = opts.maxDepth || 4;
+  const maxFiles = opts.maxFiles || 40000;
+  const hits = [];
+  let seen = 0;
+
+  function walk(dir, depth) {
+    if (depth > maxDepth || seen > maxFiles) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    entries.forEach((ent) => {
+      if (seen > maxFiles) return;
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (SKIP_DIRS.indexOf(ent.name.toLowerCase()) !== -1) return;
+        walk(full, depth + 1);
+        return;
+      }
+      if (!/\.json$/i.test(ent.name)) return;
+      if (/\.backup-\d|\.corrupt-\d|\.tmp$/i.test(ent.name)) return; // نسخنا الاحتياطية ليست هدفاً
+      seen++;
+      let st;
+      try { st = fs.statSync(full); } catch (e) { return; }
+      if (st.size < 200 || st.size > 120 * 1024 * 1024) return;
+      let obj;
+      try {
+        const raw = fs.readFileSync(full, 'utf-8');
+        obj = JSON.parse(raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw);
+      } catch (e) { return; }
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+      const matched = SIGNATURE_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(obj, k));
+      if (matched.length >= 3) hits.push({ file: full, size: st.size, mtime: st.mtime, score: matched.length, keys: matched });
+    });
+  }
+
+  roots.forEach((r) => walk(r, 0));
+  hits.sort((a, b) => (b.score - a.score) || (b.mtime - a.mtime));
+  return hits;
+}
+
+// بعض الإصدارات تحفظ البيانات داخل تخزين المتصفح المدمج (localStorage/IndexedDB)
+// بدل ملف JSON. لا يمكن تحريرها كنص، لكن كشفها يوفّر تشخيصاً حاسماً.
+const STORAGE_MARKERS = ['alaseel_pms_data', 'alaseel-data', '"reservations"', '"nightAuditRuns"', '"ledgerEntries"'];
+
+function scanBrowserStorage(root) {
+  const found = [];
+  let entries = [];
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return found; }
+
+  entries.filter((e) => e.isDirectory()).forEach((e) => {
+    const appDir = path.join(root, e.name);
+    [['Local Storage', 'leveldb'], ['IndexedDB', null], ['Session Storage', null]].forEach(([kind, sub]) => {
+      const dir = sub ? path.join(appDir, kind, sub) : path.join(appDir, kind);
+      let stat;
+      try { stat = fs.statSync(dir); } catch (_e) { return; }
+      if (!stat.isDirectory()) return;
+
+      let bytes = 0, marker = null;
+      const files = [];
+      (function walk(d, depth) {
+        if (depth > 2) return;
+        let list = [];
+        try { list = fs.readdirSync(d, { withFileTypes: true }); } catch (_e) { return; }
+        list.forEach((f) => {
+          const full = path.join(d, f.name);
+          if (f.isDirectory()) return walk(full, depth + 1);
+          let st;
+          try { st = fs.statSync(full); } catch (_e) { return; }
+          bytes += st.size;
+          files.push(f.name);
+          if (marker || st.size > 60 * 1024 * 1024) return;
+          try {
+            const buf = fs.readFileSync(full);
+            const text = buf.toString('latin1'); // بحث بايتي — قيم localStorage تُخزَّن UTF-16
+            const compact = text.replace(/\u0000/g, '');
+            STORAGE_MARKERS.forEach((m) => { if (!marker && compact.indexOf(m) !== -1) marker = m; });
+          } catch (_e) { /* ملف مقفول أو غير مقروء */ }
+        });
+      })(dir, 0);
+
+      if (bytes > 0) found.push({ app: appDir, kind: kind, dir: dir, bytes: bytes, files: files.length, marker: marker });
+    });
+  });
+  return found;
 }
 
 function resolveDataFile(explicit) {
@@ -133,14 +246,25 @@ function resolveDataFile(explicit) {
     if (!fs.existsSync(explicit)) fail('لم يتم العثور على الملف المحدد: ' + explicit);
     return explicit;
   }
-  const hits = findDataFiles();
+
+  let hits = shallowScan();
   if (!hits.length) {
-    fail('لم أعثر على ' + DATA_FILE_NAME + ' داخل ' + appDataRoot() + '\n' +
-         'شغّل الأمر مع مسار الملف يدوياً:  reset-system.cmd report --file "C:\\...\\alaseel-data.json"');
+    log('لم أجد ' + DATA_FILE_NAME + ' بالاسم المعتاد — جارٍ البحث بالمحتوى داخل AppData…');
+    hits = deepScan();
+    if (hits.length) log('تم العثور على ملف بيانات بالبحث العميق (' + hits[0].score + ' من مفاتيح النظام).');
   }
+
+  if (!hits.length) {
+    fail('لم أعثر على ملف بيانات النظام داخل:\n' +
+         dataRoots().map((r) => '   ' + r).join('\n') + '\n\n' +
+         'جرّب البحث الموسّع:      reset-system.cmd find\n' +
+         'أو حدّد المسار يدوياً:   reset-system.cmd report --file "C:\\...\\<الملف>.json"');
+  }
+
   if (hits.length > 1) {
-    log('تنبيه: وُجد أكثر من ملف بيانات — سيُستخدم الأحدث تعديلاً:');
-    hits.forEach((h, i) => log('   ' + (i === 0 ? '>' : ' ') + ' ' + h.file + '   (' + fmtBytes(h.size) + '، آخر تعديل ' + h.mtime.toISOString().slice(0, 16).replace('T', ' ') + ')'));
+    log('تنبيه: وُجد أكثر من ملف مرشّح — سيُستخدم الأعلى مطابقةً:');
+    hits.slice(0, 5).forEach((h, i) => log('   ' + (i === 0 ? '>' : ' ') + ' ' + h.file + '   (' + fmtBytes(h.size) + '، ' + h.score + ' مفاتيح، آخر تعديل ' + h.mtime.toISOString().slice(0, 16).replace('T', ' ') + ')'));
+    log('   لو الاختيار غير صحيح استخدم --file مع المسار الصحيح.');
   }
   return hits[0].file;
 }
@@ -406,6 +530,83 @@ function cmdApply(opts) {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
+/*  أمر: find — أين ملف بيانات النظام؟                                 */
+/* ------------------------------------------------------------------ */
+
+function cmdFind(opts) {
+  const roots = opts.root ? [opts.root] : dataRoots();
+
+  log('');
+  log('════════ البحث عن ملف بيانات النظام ════════');
+  roots.forEach((r) => log('نطاق البحث : ' + r));
+  if (opts.wide) log('نطاق إضافي : ' + os.homedir() + '  (--wide)');
+  log('');
+
+  // 1) مجلدات اسمها يشبه اسم التطبيق — لتعرف أين يحفظ إصدارك بياناته
+  log('── مجلدات باسم يشبه التطبيق ──');
+  let foundDirs = 0;
+  roots.forEach((root) => {
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return; }
+    entries.filter((e) => e.isDirectory() && /alas|aseel|pms|فندق/i.test(e.name)).forEach((e) => {
+      foundDirs++;
+      const dir = path.join(root, e.name);
+      let inner = [];
+      try { inner = fs.readdirSync(dir).slice(0, 40); } catch (_e) {}
+      log('  • ' + dir);
+      const jsons = inner.filter((f) => /\.json$/i.test(f));
+      log('      ملفات JSON بداخله: ' + (jsons.length ? jsons.join('، ') : 'لا يوجد في المستوى الأول'));
+    });
+  });
+  if (!foundDirs) log('  (لا يوجد مجلد بهذا الاسم — ابحث في النتائج بالأسفل)');
+
+  // 2) بحث بالمحتوى
+  // 2) تخزين المتصفح المدمج (لو الإصدار يحفظ فيه بدل ملف JSON)
+  log('');
+  log('── تخزين داخلي (localStorage / IndexedDB) داخل مجلدات التطبيقات ──');
+  let storageHits = [];
+  roots.forEach((r) => { storageHits = storageHits.concat(scanBrowserStorage(r)); });
+  const relevant = storageHits.filter((h) => h.marker || /alas|aseel|pms/i.test(h.app));
+  if (relevant.length) {
+    relevant.forEach((h) => {
+      log('  • ' + h.kind + ' — ' + h.app);
+      log('      ' + fmtBytes(h.bytes) + ' في ' + h.files + ' ملف' +
+          (h.marker ? '  ← يحتوي على بصمة بيانات النظام: ' + h.marker : '  (بدون بصمة واضحة)'));
+    });
+  } else {
+    log('  (لا شيء ذو صلة)');
+  }
+
+  const scanRoots = opts.wide ? roots.concat([os.homedir()]) : roots;
+  log('');
+  log('── ملفات JSON تحمل بصمة بيانات النظام ──');
+  const hits = deepScan({ roots: scanRoots, maxDepth: opts.wide ? 5 : 4 });
+  if (!hits.length) {
+    log('  لا شيء.');
+    log('');
+    if (relevant.some((h) => h.marker)) {
+      log('مهم: بياناتك محفوظة داخل تخزين التطبيق المدمج (localStorage) لا في ملف JSON.');
+      log('ابعث هذه النتيجة كما هي — التصفير في هذه الحالة يتم من داخل التطبيق نفسه.');
+      log('');
+    }
+    log('جرّب نطاقاً أوسع:  reset-system.cmd find --wide');
+    log('أو حدّد مجلداً بعينه:  reset-system.cmd find --root "D:\\مسار\\المجلد"');
+    log('');
+    return;
+  }
+  hits.slice(0, 15).forEach((h, i) => {
+    log('  ' + (i === 0 ? '★' : ' ') + ' ' + h.file);
+    log('      ' + fmtBytes(h.size) + ' · ' + h.score + ' من مفاتيح النظام · آخر تعديل ' +
+        h.mtime.toISOString().slice(0, 16).replace('T', ' '));
+    log('      المفاتيح: ' + h.keys.slice(0, 12).join(', ') + (h.keys.length > 12 ? ' …' : ''));
+  });
+  log('');
+  log('الخطوة التالية — شغّل الجرد على الملف المرشّح (★):');
+  log('   reset-system.cmd report --file "' + hits[0].file + '"');
+  log('');
+}
+
+/* ------------------------------------------------------------------ */
 /*  حارس: التطبيق يجب أن يكون مغلقاً                                   */
 /* ------------------------------------------------------------------ */
 
@@ -469,6 +670,7 @@ function cmdHelp() {
     '',
     'أداة تصفير بيانات نظام الأصيل',
     '',
+    '  reset-system.cmd find                        ابحث عن ملف بيانات النظام',
     '  reset-system.cmd report                      جرد للقراءة فقط',
     '  reset-system.cmd apply --dry-run             معاينة التصفير بدون كتابة',
     '  reset-system.cmd apply --yes                 تنفيذ التصفير (مع نسخة احتياطية)',
@@ -479,6 +681,8 @@ function cmdHelp() {
     '  --also a,b.c       مفاتيح إضافية تُمسح (تُقرأ من مخرجات report)',
     '  --keep-history     لا تمسح السجلات التشغيلية القديمة',
     '  --force            تخطَّ فحص "التطبيق مفتوح" (ويندوز)',
+    '  --wide             وسّع نطاق البحث في الأمر find ليشمل مجلد المستخدم',
+    '  --root <path>      حدّد مجلداً بعينه للبحث في الأمر find',
     ''
   ].join('\n'));
 }
@@ -488,8 +692,9 @@ function main() {
   if (opts.command === 'report') return cmdReport(opts);
   if (opts.command === 'apply') return cmdApply(opts);
   if (opts.command === 'verify') return cmdVerify(opts);
+  if (opts.command === 'find') return cmdFind(opts);
   if (opts.command === 'help') return cmdHelp();
-  fail('أمر غير معروف: ' + opts.command + '  (المتاح: report | apply | verify | help)');
+  fail('أمر غير معروف: ' + opts.command + '  (المتاح: find | report | apply | verify | help)');
 }
 
 main();
