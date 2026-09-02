@@ -353,6 +353,45 @@ function log(msg) { process.stdout.write(msg + '\n'); }
 function fail(msg) { process.stderr.write('\n[خطأ] ' + msg + '\n'); process.exit(1); }
 
 /* ------------------------------------------------------------------ */
+/*  فحص: هل ملف البيانات في مكانه الصحيح؟                              */
+/* ------------------------------------------------------------------ */
+
+// التطبيق يقرأ بياناته من مجلد userData فقط (%APPDATA%\\<اسم التطبيق>). لو الملف
+// اتنقل خارجه، التطبيق مش هيشوفه وهينشئ قاعدة بيانات جديدة فاضية عند أول تشغيل.
+const USERDATA_DIR_NAMES = ['alaseel-pms', 'Alaseel PMS', 'alaseel pms', 'alaseel-pms-web'];
+
+function locationCheck(file) {
+  const dir = path.dirname(file);
+  const inRoot = dataRoots().some((root) => {
+    const r = root.toLowerCase();
+    const d = dir.toLowerCase();
+    return d === r || d.indexOf(r + path.sep) === 0 || d.indexOf(r + '/') === 0;
+  });
+  if (inRoot) return null;
+
+  const primary = dataRoots()[0];
+  let expected = path.join(primary, USERDATA_DIR_NAMES[0]);
+  USERDATA_DIR_NAMES.forEach((name) => {
+    const candidate = path.join(primary, name);
+    try { if (fs.statSync(candidate).isDirectory()) expected = candidate; } catch (e) { /* غير موجود */ }
+  });
+  return { current: dir, expected: expected };
+}
+
+function printLocationWarning(warn) {
+  log('');
+  log('!! تنبيه: ملف البيانات خارج مجلد التطبيق !!');
+  log('   مكانه الحالي : ' + warn.current);
+  log('   مكانه الصحيح : ' + warn.expected);
+  log('');
+  log('   التطبيق يقرأ من المكان الصحيح فقط — لو فتحته الآن سينشئ قاعدة بيانات فارغة.');
+  log('   أعِد المجلد إلى مكانه قبل فتح التطبيق (والتطبيق مغلق):');
+  log('       move "' + warn.current + '" "' + warn.expected + '"');
+  log('   ثم تحقّق:  reset-system.cmd report');
+  log('');
+}
+
+/* ------------------------------------------------------------------ */
 /*  أمر: report                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -367,7 +406,8 @@ function cmdReport(opts) {
   log('الحجم        : ' + fmtBytes(st.size));
   log('آخر تعديل    : ' + st.mtime.toISOString().slice(0, 19).replace('T', ' '));
   log('إصدار المخطط : ' + ((data.meta && data.meta.schema_version) || 'غير معروف'));
-  log('');
+  const warn = locationCheck(file);
+  if (warn) printLocationWarning(warn); else log('');
 
   const knownWipe = new Set();
   WIPE_GROUPS.forEach((g) => g.keys.forEach((k) => knownWipe.add(k)));
@@ -515,6 +555,12 @@ function cmdApply(opts) {
 
   if (opts.dryRun) { log('معاينة فقط — لم يُعدَّل الملف. للتنفيذ: أضِف --yes بدل --dry-run'); return; }
   if (!opts.yes) fail('التنفيذ يحتاج تأكيداً صريحاً. أعِد الأمر مع --yes (أو استخدم --dry-run للمعاينة).');
+  const misplaced = locationCheck(file);
+  if (misplaced && !opts.force) {
+    printLocationWarning(misplaced);
+    fail('توقفت: التصفير على نسخة خارج مجلد التطبيق لن يظهر أثره في النظام.\n' +
+         'أعِد المجلد إلى مكانه ثم أعِد الأمر — أو أضِف --force لو كنت متعمداً تصفير هذه النسخة.');
+  }
   if (!opts.force && appLooksRunning()) {
     fail('يبدو أن تطبيق الأصيل ما زال مفتوحاً. أغلقه تماماً (تأكد من إنهائه في مدير المهام) ثم أعِد الأمر.\n' +
          'النافذة المفتوحة تعيد حفظ بياناتها فوق التصفير فيضيع بلا أثر.\n' +
@@ -623,6 +669,28 @@ function cmdFind(opts) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  أمر: auto — بحث ← جرد ← نسخة احتياطية ← تنفيذ ← تحقق                */
+/* ------------------------------------------------------------------ */
+
+function cmdAuto(opts) {
+  const file = resolveDataFile(opts.file);
+  const o = Object.assign({}, opts, { file: file });
+
+  cmdReport(o);
+
+  if (!opts.yes) {
+    log('── معاينة التنفيذ (لن يُكتب أي شيء) ──');
+    cmdApply(Object.assign({}, o, { dryRun: true }));
+    log('للتنفيذ الكامل بأمر واحد:  reset-system.cmd auto --yes');
+    log('');
+    return;
+  }
+
+  cmdApply(o);
+  cmdVerify(o);
+}
+
+/* ------------------------------------------------------------------ */
 /*  حارس: التطبيق يجب أن يكون مغلقاً                                   */
 /* ------------------------------------------------------------------ */
 
@@ -686,6 +754,7 @@ function cmdHelp() {
     '',
     'أداة تصفير بيانات نظام الأصيل',
     '',
+    '  reset-system.cmd auto --yes                  كل شيء بأمر واحد: بحث ← جرد ← نسخة ← تنفيذ ← تحقق',
     '  reset-system.cmd find                        ابحث عن ملف بيانات النظام',
     '  reset-system.cmd report                      جرد للقراءة فقط',
     '  reset-system.cmd apply --dry-run             معاينة التصفير بدون كتابة',
@@ -709,8 +778,9 @@ function main() {
   if (opts.command === 'apply') return cmdApply(opts);
   if (opts.command === 'verify') return cmdVerify(opts);
   if (opts.command === 'find') return cmdFind(opts);
+  if (opts.command === 'auto') return cmdAuto(opts);
   if (opts.command === 'help') return cmdHelp();
-  fail('أمر غير معروف: ' + opts.command + '  (المتاح: find | report | apply | verify | help)');
+  fail('أمر غير معروف: ' + opts.command + '  (المتاح: auto | find | report | apply | verify | help)');
 }
 
 main();
